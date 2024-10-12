@@ -1,0 +1,125 @@
+services:
+  # MongoDB (https://hub.docker.com/_/mongo/)
+  mongodb:
+    image: "mongo:5.0"
+    networks:
+      - graylog
+    volumes:
+      - mongodb_data:/data/db
+    restart: always
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh graylog-app-mongodb-1:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # OpenSearch cluster
+  opensearch1:
+    image: "opensearchproject/opensearch:2.12.0"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "bootstrap.memory_lock=true"
+      - "cluster.name=opensearch-cluster"
+      - "node.name=opensearch1"
+      - "discovery.seed_hosts=opensearch2"
+      - "cluster.initial_master_nodes=opensearch1,opensearch2"
+      - "action.auto_create_index=false"
+      - "plugins.security.ssl.http.enabled=false"
+      - "plugins.security.disabled=true"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    restart: "on-failure"
+    networks:
+      - graylog
+    volumes:
+      - opensearch1_data:/usr/share/opensearch/data
+
+  opensearch2:
+    image: "opensearchproject/opensearch:2.12.0"
+    environment:
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "bootstrap.memory_lock=true"
+      - "cluster.name=opensearch-cluster"
+      - "node.name=opensearch2"
+      - "discovery.seed_hosts=opensearch1"
+      - "cluster.initial_master_nodes=opensearch1,opensearch2"
+      - "action.auto_create_index=false"
+      - "plugins.security.ssl.http.enabled=false"
+      - "plugins.security.disabled=true"
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_INITIAL_ADMIN_PASSWORD}
+    ulimits:
+      memlock:
+        hard: -1
+        soft: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    restart: "on-failure"
+    networks:
+      - graylog
+    volumes:
+      - opensearch2_data:/usr/share/opensearch/data
+
+  # Graylog (https://hub.docker.com/r/graylog/graylog/)
+  graylog:
+    image: "graylog/graylog:6.0.7"
+    environment:
+      - GRAYLOG_NODE_ID_FILE=/usr/share/graylog/data/config/node-id
+      - GRAYLOG_HTTP_BIND_ADDRESS=0.0.0.0:9000
+      - GRAYLOG_ELASTICSEARCH_HOSTS=http://opensearch1:9200,http://opensearch2:9200  # Update this line
+      - GRAYLOG_MONGODB_URI=mongodb://mongodb:27017/graylog
+      # Replace with a strong password (at least 16 characters)
+      - GRAYLOG_PASSWORD_SECRET=${GRAYLOG_PASSWORD_SECRET}
+      - GRAYLOG_ROOT_PASSWORD_SHA2=${GRAYLOG_ROOT_PASSWORD_SHA2}
+    entrypoint: >
+      /usr/bin/tini -- 
+      /bin/bash -c "
+        wait-for-it opensearch1:9200 --timeout=300 &&
+        wait-for-it opensearch2:9200 --timeout=300 &&
+        /docker-entrypoint.sh
+      "
+    networks:
+      - graylog
+    restart: always
+    depends_on:
+      - mongodb
+      - opensearch1
+      - opensearch2
+    ports:
+      - "9000:9000"  # Graylog web interface and REST API
+      - "1514:1514/tcp"  # Syslog TCP (default port for syslog)
+      - "1514:1514/udp"  # Syslog UDP
+      - "12201:12201/tcp"  # GELF TCP 12201
+      - "12201:12201/udp"  # GELF UDP 12201
+      - "12202:12202/tcp"  # GELF TCP 12202
+      - "12202:12202/udp"  # GELF UDP 12202
+      - "12203:12203/tcp"  # GELF TCP 12203
+      - "12203:12203/udp"  # GELF UDP 12203
+    volumes:
+      - graylog_data:/usr/share/graylog/data
+      - graylog_journal:/usr/share/graylog/data/journal
+      - ./tmp:/tmp
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://graylog:9000/api/system/lbstatus"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+networks:
+  graylog:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+  opensearch1_data:
+  opensearch2_data:
+  graylog_data:
+  graylog_journal:
