@@ -10,6 +10,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - ./postgres12_data:/var/lib/postgresql/data
+    restart: unless-stopped
     networks:
       - postgres12_network
 

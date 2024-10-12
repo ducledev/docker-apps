@@ -6,10 +6,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
-      - "3307:3306"
+      - "3307:3306"   # Exposing port 3307
     volumes:
       - ./data:/var/lib/mysql
     restart: unless-stopped
-
-volumes:
-  mysql_data:
