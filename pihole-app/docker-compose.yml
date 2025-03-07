@@ -1,0 +1,26 @@
+services:
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    hostname: pihole
+    ports:
+      # DNS Ports
+      - "53:53/tcp"
+      - "53:53/udp"
+      # Default HTTP Port
+      - "${PIHOLE_HTTP_PORT:-8080}:80/tcp"
+      # Default HTTPs Port. FTL will generate a self-signed certificate
+      - "${PIHOLE_HTTPS_PORT:-8443}:443/tcp"
+    environment:
+      TZ: "UTC"
+      WEBPASSWORD: "${PIHOLE_WEBPASSWORD:-1234567890}"
+      DNSMASQ_LISTENING: "all"
+      VIRTUAL_HOST: "pihole.local"
+      FTLCONF_LOCAL_IPV4: "${PIHOLE_LOCAL_IPV4:-192.168.88.22}"  # Replace with your Alpine server's IP
+      PIHOLE_DNS_: "8.8.8.8;8.8.4.4"  # Upstream DNS
+      # If using Docker's default `bridge` network setting the dns listening mode should be set to 'all'
+      FTLCONF_dns_listeningMode: 'all'
+    volumes:
+      - './pihole/etc-pihole:/etc/pihole'
+      - './pihole/etc-dnsmasq:/etc/dnsmasq.d'
+    restart: unless-stopped
